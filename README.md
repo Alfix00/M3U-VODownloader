@@ -10,3 +10,5 @@ Written in Python3
 *I wrote this program mainly to practice in Python and also for fun.
 
 *I hope it helps someone in anyway =)
+
+*NB: Atm, the download of channels is unaivable.
