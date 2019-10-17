@@ -11,4 +11,4 @@ Written in Python3
 
 *I hope it helps someone in anyway =)
 
-*NB: Atm, the download of channels is unaivable.
+*NB: Atm, the download of channels is unavailable.
