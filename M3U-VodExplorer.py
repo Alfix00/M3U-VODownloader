@@ -16,6 +16,8 @@ class Channel:
         self.name = name
         self.category = category
         self.url = url
+        self.format = str(url.split(".", 3)[-1])                 #mp3,avi,etc
+        self.size_download = "Not Calculated yet"
 
     def getName(self):
         return self.name
@@ -26,9 +28,22 @@ class Channel:
     def getUrl(self):
         return self.url
 
+    def getFormat(self):
+        if self.format is "":
+            return "mp4"
+        elif self.format is not "":
+            return self.format
+
+    def getSize(self):
+        return self.size_download
+
     def setName(self, name):
         if isinstance(name, str):
             self.name = name
+
+    def setSize(self, size):
+        if isinstance(size, str):
+            self.size_download = size
 
 
 class Category:
@@ -56,18 +71,8 @@ class Category:
     def updateNumberChannel(self, new_number):
         self.numberChannel = new_number
 
-
 class LoadFile:
 
-    def __init__(self):
-        self.download_list = [Channel]
-
-    def add_downloadList(self, download_list):
-        if isinstance(download_list, [Channel]):
-            self.download_list = download_list
-
-    def get_downloadList(self):
-        return self.download_list
 
     def check_m3u_file(self):
         file_name = ""
@@ -104,7 +109,7 @@ class LoadFile:
                         channels.append(c)
                     # End Channel build
                 return channels
-        elif file_name is "":
+        elif file_name == "":
             print(".m3u file not found in folder or corrupt! \nYou need to have a single .m3u file in the folder!")
             input("\nPress any key to continue.")
             exit(0)
@@ -183,10 +188,20 @@ def show_channel_category(category=Category):
 
 def show_download_list(channels=[Channel]):
     counter = 0
+    clear()
+    print("[*] Loading Channels, please wait ...\n")
     for channel in channels:
         if isinstance(channel, Channel):
             counter += 1
-            print("%s] %s" % (counter, str(channel.getName())))
+            try:
+                resp = urllib.request.urlopen(str(channel.getUrl()))
+                size = round(int(resp.getheader('content-length')) / 1000000000, 2)
+                channel.setSize(str(size))
+                length = str(size) + " GB"
+            except Exception as e:
+                length = "Size Not Loaded"
+               #print(e)
+            print("%s] %s --> [%s]" % (counter, str(channel.getName()), length))
     print("Channels in download list: "+str(counter))
 
 
@@ -246,11 +261,16 @@ def option_four(channels=[Channel]):
 ##########################-> Download section is not finish yet. You can ignore this part of code <-################################
 
 def option_five():
-    global donwloadlist
     show_download_list(donwloadlist)
     answer = input("\nVuoi effettuare il download della lista?\n\n\t [1 = SI] - [2 = NO] : ")
     if answer == 1:
-        start_download_list()
+        load_list = donwloadlist
+        for channel in load_list:
+            if isinstance(channel, Channel):
+                url = channel.getUrl()
+                print("Scaricamento di: " + channel.getName() + " in corso.")
+                urllib.request.urlretrieve(url, str(channel.getName() + "." + channel.getFormat()))
+                print("Download completato!.\n")
 
 #Take the golbal variable "downloadList" and append the new passed list
 def append_to_list(channel_list=[Channel]):
@@ -261,31 +281,7 @@ def append_to_list(channel_list=[Channel]):
 donwloadlist = [Channel] #This is the global array of channels in download list.
 
 
-def start_download_list():
-    global downloadlist
-    if len(downloadlist) > 1:
-        if isinstance(downloadlist, [Channel]):
-            clear()
-            for channel in downloadlist:
-                if(is_downloadable(channel.getUrl())):
-                    url = channel.getUrl()
-                    print ("Scaricamento di: "+channel.getName()+" in corso.")
-                    urllib.request.urlretrieve(url, "/Download_folder/"+channel.getName()+'.mkv')
-                    print("Download completato!.\n")
-                    
 
-def is_downloadable(url):
-    """
-    Does the url contain a downloadable resource
-    """
-    h = requests.head(url, allow_redirects=True)
-    header = h.headers
-    content_type = header.get('content-type')
-    if 'text' in content_type.lower():
-        return False
-    if 'html' in content_type.lower():
-        return False
-    return True
 
 ###################################################################################################################################
 
@@ -296,7 +292,7 @@ def add_to_list(channels=[Channel]):
         print('Error to load channels')
     if int(len(channels)) > 0:
         answer = int(input('[*] You want to add a channel(s) to the download list?\n\n\t [1 = YES] - [2 = NO] : '))
-        
+
         if answer == 1:
             answer_two = int(input('\nYou want to make a multiple selection?\n\n\t [1 = YES] - [2 = NO] : '))
             # ---------------------------Multiple download section--------------------------------#
@@ -338,6 +334,7 @@ def add_to_list(channels=[Channel]):
                 print('Channel added succesfully! ')
         if answer == 2:
             print('Back to menu...')
+
 
 def menu(categories=[Category], channels=[Channel]):
     exit = False
@@ -400,7 +397,6 @@ def initialize():
     channels = [Channel]
     channels = LoadFile().getChannels(channels)
     categories = LoadFile().getCategory(channels)
-    download_list = LoadFile().download_list
     print('Loading file, please wait...')
     categories = LoadFile().fill_categories(categories, channels)
     print('\nLoaded Succesfully!\n')
@@ -408,5 +404,3 @@ def initialize():
 
 
 initialize()
-
-
