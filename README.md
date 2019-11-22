@@ -1,5 +1,5 @@
-# M3U-VodExplorer
-This program read ".m3u" files: Explore and Organize Channels and Categories. Search into them by name and see the respective URL. 
+# M3U-VODownloader
+This program read ".m3u" files: Explore, Organize and Download channels and categories. Search into them by name and see the respective URL. 
 Now you can also download files from the list! [Update]
 
 Written in Python3
@@ -10,5 +10,4 @@ Written in Python3
 
 
 *I wrote this program mainly to practice in Python and also for fun.
-
-*I hope it helps someone in anyway =)
+** Please report any bugs =)
