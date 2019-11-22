@@ -1,6 +1,6 @@
-import re, os.path, urllib.request
+import re, sys, os.path, urllib.request
 from os import system, name
-
+from urllib.request import urlretrieve
 
 def clear():
     # for windows
@@ -16,7 +16,9 @@ class Channel:
         self.name = name
         self.category = category
         self.url = url
-        self.format = str(url.split(".", 3)[-1])                 #mp3,avi,etc
+        self.format = str(url.split(".", 3)[-1])
+        if self.format is "":
+            self.format = "mp4"                                 #default format
         self.size_download = "Not Calculated yet"
 
     def getName(self):
@@ -29,10 +31,7 @@ class Channel:
         return self.url
 
     def getFormat(self):
-        if self.format is "":
-            return "mp4"
-        elif self.format is not "":
-            return self.format
+        return self.format
 
     def getSize(self):
         return self.size_download
@@ -197,12 +196,10 @@ def show_download_list(channels=[Channel]):
                 resp = urllib.request.urlopen(str(channel.getUrl()))
                 size = round(int(resp.getheader('content-length')) / 1000000000, 2)
                 channel.setSize(str(size))
-                length = str(size) + " GB"
-            except Exception as e:
-                length = "Size Not Loaded"
-               #print(e)
-            print("%s] %s --> [%s]" % (counter, str(channel.getName()), length))
-    print("Channels in download list: "+str(counter))
+            except:
+                pass
+            print("%s] %s --> [%s]" % (counter, str(channel.getName()), channel.getSize() + " [GB"))
+    print("\nChannels in download list: "+str(counter))
 
 
 def option_one(categories=[Category]):
@@ -258,32 +255,53 @@ def option_four(channels=[Channel]):
         print("\n[!] Channel not found!")
 
 
-##########################-> Download section is not finish yet. You can ignore this part of code <-################################
+
+def reporthook(blocknum, blocksize, totalsize):              #I Use this method for the progress bar in urllib.request
+    readsofar = blocknum * blocksize
+    if totalsize > 0:
+        percent = readsofar * 1e2 / totalsize
+        s = "\r%5.1f%% %*d / %d" % (
+            percent, len(str(totalsize)), readsofar, totalsize)
+        sys.stderr.write(s)
+        if readsofar >= totalsize: # near the end
+            sys.stderr.write("\n")
+    else: # total size is unknown
+        sys.stderr.write("read %d\n" % (readsofar,))
+
 
 def option_five():
+    global donwloadlist
     show_download_list(donwloadlist)
-    answer = input("\nVuoi effettuare il download della lista?\n\n\t [1 = SI] - [2 = NO] : ")
-    if answer == 1:
+    answer = int(input("\nStart the download?\n\n\t [1 = YES] - [Other = NO] : "))
+    if answer is 1:
         load_list = donwloadlist
+        lock = False
+        clear()
+        print("[**] Press CTRL + C for stop the download and back to menu' [**]\n ")
         for channel in load_list:
-            if isinstance(channel, Channel):
-                url = channel.getUrl()
-                print("Scaricamento di: " + channel.getName() + " in corso.")
-                urllib.request.urlretrieve(url, str(channel.getName() + "." + channel.getFormat()))
-                print("Download completato!.\n")
+            if isinstance(channel, Channel) and lock is False:
+                try:
+                    url = channel.getUrl()
+                    print("\n> Downloading : " + channel.getName() + channel.getSize() + " [GB]")
+                    urllib.request.urlretrieve(url, "./Download_folder/"
+                                               + str(channel.getName() + "." + channel.getFormat()[:-1]), reporthook)
+                    print("\nDownload completed!\n\n")
+                    load_list.remove(channel)
+                except:
+                    if InterruptedError:
+                        lock = True
+                    elif not InterruptedError:
+                        print("\n[!] Error while downloading " + channel.getName() + " [!]\n")
+                        input("\n* Press any key to download next channel *")
 
-#Take the golbal variable "downloadList" and append the new passed list
+        donwloadlist = load_list
+
+    #Take the golbal variable "downloadList" and append the new passed list
 def append_to_list(channel_list=[Channel]):
     global donwloadlist
     donwloadlist = donwloadlist + channel_list
 
-
 donwloadlist = [Channel] #This is the global array of channels in download list.
-
-
-
-
-###################################################################################################################################
 
 
 def add_to_list(channels=[Channel]):
@@ -348,7 +366,7 @@ def menu(categories=[Category], channels=[Channel]):
             print('    2) Show Channels into Categories.')
             print('    3) Search Categories by name.')
             print('    4) Search Channels by name.\n')
-           #print('    5) Show download list and download. \n')                              #Not finish yet
+            print('    5) Show download list and download. \n')                              #Not finish yet
             print('    0) Exit.')
             print('--------------------------------------------[Dev by Alfix00]')
             print('Loaded: ')
@@ -393,14 +411,17 @@ def checkFolder():
 def initialize():
     # START
     clear()
-    checkFolder()
-    channels = [Channel]
-    channels = LoadFile().getChannels(channels)
-    categories = LoadFile().getCategory(channels)
-    print('Loading file, please wait...')
-    categories = LoadFile().fill_categories(categories, channels)
-    print('\nLoaded Succesfully!\n')
-    menu(categories, channels)
+    try:
+        checkFolder()
+        channels = [Channel]
+        channels = LoadFile().getChannels(channels)
+        categories = LoadFile().getCategory(channels)
+        print('Loading file, please wait...')
+        categories = LoadFile().fill_categories(categories, channels)
+        print('\nLoaded Succesfully!\n')
+        menu(categories, channels)
+    except Exception:
+        print("\n\n> Exit from the program.\n")
 
 
 initialize()
