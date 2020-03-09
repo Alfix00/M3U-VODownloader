@@ -1,4 +1,4 @@
-import re, sys, os.path, urllib.request, time, threading, collections
+import re, sys, os.path, urllib.request, time, threading, collections, numpy
 from threading import Thread
 from os import system, name
 from urllib.request import urlretrieve
@@ -131,6 +131,7 @@ class LoadFile:
                         c = Channel(channel_name, channel_category, channel_link)
                         channels.append(c)
                     # End Channel build
+                numpy.save("./settings/channels", channels, allow_pickle=True)
                 return channels
         elif file_name == "":
             print(".m3u file not found in folder or corrupt! \nYou need to have a single .m3u file in the folder!")
@@ -174,6 +175,7 @@ class LoadFile:
             new_cat.updateNumberChannel(len(new_cat.getChannels()) - 1)
             if int(len(new_cat.getChannels())) > 1:
                 filledCategories.append(new_cat)
+        numpy.save('./settings/categories', filledCategories, allow_pickle=True)
         return filledCategories
 
 #--------| OUTPUT METHODS for Category and Channels |------------------------------------------------------------------#
@@ -229,9 +231,8 @@ def show_download_list(channels=[Channel]):
 
 def option_one(categories=[Category]):
     answer = 0
-    if isinstance(categories, type([Category])):
-        show_category_list(categories)
-        answer = input("Show channels into a category? \n\n\t[1 = YES] - [other = NO]: ")
+    show_category_list(categories)
+    answer = input("Show channels into a category? \n\n\t[1 = YES] - [other = NO]: ")
     if answer == '1':
         option_two(categories)
 
@@ -313,6 +314,14 @@ def remove_duplicate(duplicate=[Channel]):
                 final_list.append(num)
     return final_list
 
+def reload_m3u():
+    channels = [Channel]
+    channels = LoadFile().getChannels(channels)
+    categories = LoadFile().getCategory(channels)
+    print('Reloading M3U file, please wait...')
+    categories = LoadFile().fill_categories(categories, channels)
+    menu(categories,channels)
+
 def reporthook(blocknum, blocksize, totalsize):  #I Use this method for the progress bar in urllib.request
     global start_time
     readsofar = blocknum * blocksize
@@ -335,7 +344,16 @@ def reporthook(blocknum, blocksize, totalsize):  #I Use this method for the prog
 def append_to_list(channel_list=[Channel]):     #Take the golbal variable "downloadList" and append the new passed list.
     global donwloadlist
     donwloadlist = donwloadlist + channel_list
+    numpy.save("./settings/download list", donwloadlist)
 
+def check_dwn_list():
+    if os.path.isfile('./settings/download list.npy'):
+        global donwloadlist
+        tmp = numpy.load("./settings/download list.npy", allow_pickle=True)
+        download_list = [Channel]
+        for channel in tmp :
+            download_list.append(channel)
+        donwloadlist = donwloadlist + download_list
 
 donwloadlist = [Channel]                        #This is the global array of channels in download list.
 
@@ -402,7 +420,8 @@ def menu(categories=[Category], channels=[Channel]):
             print('    2) Show Channels into Categories.')
             print('    3) Search Categories by name.')
             print('    4) Search Channels by name.\n')
-            print('    5) Show download list and download. \n')
+            print('    5) Show download list and download. ')
+            print('    6) Reload m3u file. \n')
             print('    0) Exit.')
             print('---------------------------------------------[Dev by Alfix00]')
             print('Loaded: ')
@@ -413,7 +432,7 @@ def menu(categories=[Category], channels=[Channel]):
             if choice == 0:
                 print("\n\n-> Exit from the program!\n")
                 exit = True
-            if choice < 1 or choice > 5 and choice != 0:
+            if choice < 1 or choice > 6 and choice != 0:
                 if choice != 0:
                     print('Error! back to menu... ')
             if choice == 1:
@@ -426,6 +445,8 @@ def menu(categories=[Category], channels=[Channel]):
                 option_four(channels)
             if choice == 5:
                 option_five()
+            if choice == 6:
+                reload_m3u()
             if exit is False:
                 input("\nPress Enter to continue...")
         except KeyboardInterrupt:
@@ -439,6 +460,20 @@ def checkFolder():
             os.mkdir("Download_folder")
         except OSError:
             pass
+    if not os.path.isfile("./settings"):
+        try:
+            os.mkdir("settings")
+        except OSError:
+            pass
+
+def checkSettings():
+    path = './settings/'
+    path_c = './settings/categories.npy'
+    path_s = './settings/channels.npy'
+    if os.path.exists(path_c) and os.path.exists(path_s) :
+        return True
+    return False
+
 
 
 def initialize():
@@ -446,15 +481,21 @@ def initialize():
     clear()
     try:
         checkFolder()
-        channels = [Channel]
-        channels = LoadFile().getChannels(channels)
-        categories = LoadFile().getCategory(channels)
-        print('Loading file, please wait...')
-        categories = LoadFile().fill_categories(categories, channels)
-        print('\nLoaded Succesfully!\n')
+        settings = False
+        settings = checkSettings()
+        if settings is False:
+            channels = [Channel]
+            channels = LoadFile().getChannels(channels)
+            categories = LoadFile().getCategory(channels)
+            print('Loading file, please wait...')
+            categories = LoadFile().fill_categories(categories, channels)
+            print('\nLoaded Succesfully!\n')
+        else:   #This will save loading time!
+            channels = numpy.load("./settings/channels.npy", allow_pickle=True)
+            categories = numpy.load("./settings/categories.npy", allow_pickle=True)
+        check_dwn_list()
         menu(categories, channels)
     except Exception:
-        threadLock.release()
         print("\n\n> Exit from the program.\n")
 
 
