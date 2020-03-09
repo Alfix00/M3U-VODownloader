@@ -1,4 +1,5 @@
-import re, sys, os.path, urllib.request
+import re, sys, os.path, urllib.request, time, threading, collections
+from threading import Thread
 from os import system, name
 from urllib.request import urlretrieve
 
@@ -61,6 +62,37 @@ class Category:
 
     def updateNumberChannel(self, new_number):
         self.numberChannel = new_number
+
+
+threadLock = threading.Lock()
+
+class downloadThread (Thread):
+
+    def __init__(self, channel):
+        threading.Thread.__init__(self)
+        self.channel = channel
+
+    def run(self):
+        if isinstance(self.channel, Channel):
+            try:
+                threadLock.acquire()
+                url = self.channel.getUrl()
+                print("\n> Downloading : " + self.channel.getName() +" | "+ self.channel.getSize() + " [GB]\n")
+                urllib.request.urlretrieve(url, "./Download_folder/"
+                                           + str(self.channel.getName() + "." + self.channel.getFormat()[:-1]), reporthook)
+                print("\nDownload completed!\n\n")
+                load_list.remove(self.channel)
+                threadLock.release()
+            except:
+                threadLock.release()
+                if InterruptedError:
+                    print("\n\n[!] Download Stopped \n")
+                    os.remove("./Download_folder/" + str(self.channel.getName() + "." + self.channel.getFormat()[:-1]))
+                    lock = True
+                elif not InterruptedError:
+                    print("\n[!] Error while downloading " + channel.getName() + " [!]\n")
+                    os.remove("./Download_folder/" + str(self.channel.getName() + "." + self.channel.getFormat()[:-1]))
+                    input("\n* Press any key to download next channel *")
 
 
 class LoadFile:
@@ -259,22 +291,9 @@ def option_five():
         print("[**] Press CTRL + C for stop the download and back to menu' [**]\n ")
         for channel in load_list:
             if isinstance(channel, Channel) and lock is False:
-                try:
-                    url = channel.getUrl()
-                    print("\n> Downloading : " + channel.getName() +" | "+ channel.getSize() + " [GB]")
-                    urllib.request.urlretrieve(url, "./Download_folder/"
-                                               + str(channel.getName() + "." + channel.getFormat()[:-1]), reporthook)
-                    print("\nDownload completed!\n\n")
-                    load_list.remove(channel)
-                except:
-                    if InterruptedError:
-                        print("\n\n[!] Download Stopped \n")
-                        os.remove("./Download_folder/" + str(channel.getName() + "." + channel.getFormat()[:-1]))
-                        lock = True
-                    elif not InterruptedError:
-                        print("\n[!] Error while downloading " + channel.getName() + " [!]\n")
-                        os.remove("./Download_folder/" + str(channel.getName() + "." + channel.getFormat()[:-1]))
-                        input("\n* Press any key to download next channel *")
+                thread = downloadThread(channel)
+                thread.start()
+                thread.join()
         donwloadlist = load_list
 
 #--------| Functions |-------------------------------------------------------------------------------------------------#
@@ -285,13 +304,26 @@ def clear():
     else:
         _ = system('clear')
 
+def remove_duplicate(duplicate=[Channel]):
+    final_list = []
+    for num in duplicate:
+        if isinstance(num, Channel):
+            if num not in final_list:
+                final_list.append(num)
+    return final_list
 
 def reporthook(blocknum, blocksize, totalsize):  #I Use this method for the progress bar in urllib.request
+    global start_time
     readsofar = blocknum * blocksize
+    if blocknum == 0:
+        start_time = time.time()
+        return
     if totalsize > 0:
+        duration = time.time() - start_time
+        progress_size = int(blocknum * blocksize)
+        speed = int(progress_size / (1024 * duration))
         percent = readsofar * 1e2 / totalsize
-        s = "\r%5.1f%% %*d / %d" % (
-            percent, len(str(totalsize)), readsofar, totalsize)
+        s = "\r%5.1f%% %*d MB / %d MB --- %d KB/s --- %d seconds passed" % (percent, len(str(totalsize)), readsofar*1e-6, totalsize*1e-6, speed, duration)
         sys.stderr.write(s)
         if readsofar >= totalsize:                # near the end
             sys.stderr.write("\n")
