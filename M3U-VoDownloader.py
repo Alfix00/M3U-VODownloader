@@ -75,14 +75,14 @@ class downloadThread (Thread):
     def run(self):
         if isinstance(self.channel, Channel):
             try:
-                threadLock.acquire()
                 url = self.channel.getUrl()
                 print("\n> Downloading : " + self.channel.getName() +" | "+ self.channel.getSize() + " [GB]\n")
+                threadLock.acquire()
                 urllib.request.urlretrieve(url, "./Download_folder/"
                                            + str(self.channel.getName() + "." + self.channel.getFormat()[:-1]), reporthook)
-                print("\nDownload completed!\n\n")
-                load_list.remove(self.channel)
                 threadLock.release()
+                print("\nDownload completed!\n\n")
+
             except:
                 threadLock.release()
                 if InterruptedError:
@@ -294,6 +294,7 @@ def option_five():
                 thread = downloadThread(channel)
                 thread.start()
                 thread.join()
+                load_list.remove(channel)
         donwloadlist = load_list
 
 #--------| Functions |-------------------------------------------------------------------------------------------------#
@@ -453,6 +454,7 @@ def initialize():
         print('\nLoaded Succesfully!\n')
         menu(categories, channels)
     except Exception:
+        threadLock.release()
         print("\n\n> Exit from the program.\n")
 
 
