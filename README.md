@@ -6,7 +6,7 @@ Written in Python3
 
 
 
-<img src="https://s3.gifyu.com/images/M3U-VodDownloader.gif">
+<img src="https://s5.gifyu.com/images/VodDownloaderm3u.gif">
 
 
 *I wrote this program mainly to practice in Python and also for fun.
