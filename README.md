@@ -1,5 +1,5 @@
 # M3U-VODownloader
-Video on Demand or VOD, are a huge database of videos/film/media stored into a file ( .m3u or .m3u8 ), you can open it with VLC and see all the contents.
+Video on Demand or VOD, are huge database of videos/film/media stored into a file ( .m3u or .m3u8 ), you can open it with VLC and see all the contents.
 
 I made this script to manage better this "huge" database of media and download my preferred!
 with this script you can:
