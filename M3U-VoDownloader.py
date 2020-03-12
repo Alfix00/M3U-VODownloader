@@ -1,8 +1,8 @@
-import re, sys, os.path, urllib.request, time, threading, collections, numpy
+import re, sys, os.path, urllib.request, time, threading, collections, numpy, asyncio, random
 from threading import Thread
 from os import system, name
 from urllib.request import urlretrieve
-
+from proxybroker import Broker
 
 class Channel:
     def __init__(self, name, category, url):
@@ -63,6 +63,11 @@ class Category:
     def updateNumberChannel(self, new_number):
         self.numberChannel = new_number
 
+#--------| Downloading and Loading channels |------------------------------------------------------------------#
+
+fresh_proxy = []
+
+status_proxy = False
 
 threadLock = threading.Lock()
 
@@ -73,24 +78,41 @@ class downloadThread (Thread):
         self.channel = channel
 
     def run(self):
+        url = self.channel.getUrl()
         if isinstance(self.channel, Channel):
+            global fresh_proxy, status_proxy
             try:
-                url = self.channel.getUrl()
-                print("\n> Downloading : " + self.channel.getName() +" | "+ self.channel.getSize() + " [GB]\n")
-                threadLock.acquire()
-                urllib.request.urlretrieve(url, "./Download_folder/"
-                                           + str(self.channel.getName() + "." + self.channel.getFormat()[:-1]), reporthook)
-                threadLock.release()
-                print("\nDownload completed!\n\n")
+                if status_proxy:
+                    rand = random.randint(0, 10)
+                    proto = fresh_proxy[rand].split('-')[0]
+                    proxy = fresh_proxy[rand].split('-')[1]
+                    p = urllib.request.ProxyHandler({proto: proxy})
+                    opener = urllib.request.build_opener(p)
+                    urllib.request.install_opener(opener)
+                    threadLock.acquire()
+                    print('[i] You are now downloading with the proxy: '+str(proxy)+"\n")
+                    urllib.request.urlretrieve(url, "./Download_folder/"
+                                               + str(self.channel.getName() + "." + self.channel.getFormat()[:-1]),
+                                               reporthook)
+                    threadLock.release()
+                    print("\nDownload completed!\n\n")
+
+                else:
+                    print("\n> Downloading : " + self.channel.getName() +" | "+ self.channel.getSize() + " [GB]\n")
+                    threadLock.acquire()
+                    urllib.request.urlretrieve(url, "./Download_folder/"
+                                               + str(self.channel.getName() + "." + self.channel.getFormat()[:-1]), reporthook)
+                    threadLock.release()
+                    print("\nDownload completed!\n\n")
 
             except:
                 threadLock.release()
-                if InterruptedError:
+                if InterruptedError or KeyboardInterrupt:
                     print("\n\n[!] Download Stopped \n")
                     os.remove("./Download_folder/" + str(self.channel.getName() + "." + self.channel.getFormat()[:-1]))
                     lock = True
-                elif not InterruptedError:
-                    print("\n[!] Error while downloading " + channel.getName() + " [!]\n")
+                else:
+                    print("\n[!] Error while downloading " + self.channel.getName() + " [!]\n")
                     os.remove("./Download_folder/" + str(self.channel.getName() + "." + self.channel.getFormat()[:-1]))
                     input("\n* Press any key to download next channel *")
 
@@ -178,7 +200,8 @@ class LoadFile:
         numpy.save('./settings/categories', filledCategories, allow_pickle=True)
         return filledCategories
 
-#--------| OUTPUT METHODS for Category and Channels |------------------------------------------------------------------#
+
+#--------| Output for Category and Channels |------------------------------------------------------------------#
 
 def show_category_list(categories=[Category]):
     counter = int(len(categories))
@@ -212,22 +235,37 @@ def show_channel_category(category=Category):
 
 
 def show_download_list(channels=[Channel]):
+    global status_proxy
     counter = 0
     clear()
     print("[*] Loading Channels, please wait ...\n")
     for channel in channels:
         if isinstance(channel, Channel):
-            counter += 1
             try:
-                resp = urllib.request.urlopen(str(channel.getUrl()))
-                size = round(int(resp.getheader('content-length')) / 1000000000, 2)
-                channel.setSize(str(size))
+                counter += 1
+                if status_proxy:
+                    global fresh_proxy
+                    rand = random.randint(0, 9)
+                    proto = fresh_proxy[rand].split('-')[0]
+                    proxy = fresh_proxy[rand].split('-')[1]
+                    p = urllib.request.ProxyHandler({proto: proxy})
+                    opener = urllib.request.build_opener(p)
+                    urllib.request.install_opener(opener)
+                    resp = urllib.request.urlopen(str(channel.getUrl()))
+                    size = round(int(resp.getheader('content-length')) / 1000000000, 2)
+                    channel.setSize(str(size))
+                else:
+                    resp = urllib.request.urlopen(str(channel.getUrl()))
+                    size = round(int(resp.getheader('content-length')) / 1000000000, 2)
+                    channel.setSize(str(size))
             except:
                 pass
+
             print("%s] %s --> [%s]" % (counter, str(channel.getName()), channel.getSize() + " [GB"))
+
     print("\nChannels in download list: "+str(counter))
 
-#--------| OPTIONS |---------------------------------------------------------------------------------------------------#
+#--------| Menu Options |---------------------------------------------------------------------------------------------------#
 
 def option_one(categories=[Category]):
     answer = 0
@@ -306,13 +344,6 @@ def clear():
     else:
         _ = system('clear')
 
-def remove_duplicate(duplicate=[Channel]):
-    final_list = []
-    for num in duplicate:
-        if isinstance(num, Channel):
-            if num not in final_list:
-                final_list.append(num)
-    return final_list
 
 def reload_m3u():
     channels = [Channel]
@@ -321,6 +352,7 @@ def reload_m3u():
     print('Reloading M3U file, please wait...')
     categories = LoadFile().fill_categories(categories, channels)
     menu(categories,channels)
+
 
 def reporthook(blocknum, blocksize, totalsize):  #I Use this method for the progress bar in urllib.request
     global start_time
@@ -341,22 +373,70 @@ def reporthook(blocknum, blocksize, totalsize):  #I Use this method for the prog
         sys.stderr.write("read %d\n" % (readsofar,))
 
 
+def load_p():
+    proxies = numpy.load("./settings/proxies.npy", allow_pickle=True)
+    LoadFile.set_proxies(proxies)
+
+
+def load_proxies():
+    proxies = fresh_proxy
+    path = './settings/'
+    path_p = './settings/proxies.npy'
+    if os.path.exists(path_p):
+        load_p()
+    else:
+        if len(proxies) < 1:
+            get_fresh_proxy()
+            load_p()
+
+
+async def save(proxies):
+    global fresh_proxy
+    proxy_arr = [None] * 10
+    index = 0
+    while True:
+        proxy = await proxies.get()
+        if proxy is None:
+            break
+        proto = 'https' if 'HTTPS' in proxy.types else 'http'
+        proxy_arr[index] = str(proto) + "-" + str(proto)+"://" + str(str(proxy.host)+":" + str(proxy.port))
+        fresh_proxy = fresh_proxy + proxy_arr
+        index = index + 1
+
+
+def get_fresh_proxy():
+    proxies = asyncio.Queue()
+    broker = Broker(proxies)
+    tasks = asyncio.gather(broker.find(types=['HTTP', 'HTTPS'], limit=10), save(proxies))
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(tasks)
+
+
+def clean_proxies():
+    global fresh_proxy
+    clean_list = []
+    for proxy in fresh_proxy:
+        if proxy is not None:
+            clean_list.append(proxy)
+    return clean_list
+
+
 def append_to_list(channel_list=[Channel]):     #Take the golbal variable "downloadList" and append the new passed list.
     global donwloadlist
     donwloadlist = donwloadlist + channel_list
     numpy.save("./settings/download list", donwloadlist)
+
 
 def check_dwn_list():
     if os.path.isfile('./settings/download list.npy'):
         global donwloadlist
         tmp = numpy.load("./settings/download list.npy", allow_pickle=True)
         download_list = [Channel]
-        for channel in tmp :
+        for channel in tmp:
             download_list.append(channel)
         donwloadlist = donwloadlist + download_list
 
 donwloadlist = [Channel]                        #This is the global array of channels in download list.
-
 
 def add_to_list(channels=[Channel]):
     download_list = [Channel]
@@ -406,6 +486,22 @@ def add_to_list(channels=[Channel]):
         if answer == 2:
             print('Back to menu...')
 
+def proxy_mode():
+    global fresh_proxy, status_proxy
+    on_off_proxies()
+    if status_proxy:
+        print("> Getting proxies...")
+        get_fresh_proxy()
+        print("> Loading proxies... ")
+        load_proxies()
+        proxies = clean_proxies()
+        fresh_proxy = proxies
+        print("> Added 10 fresh proxies ! \n")
+        print("[i] Proxy mode succesfully activated. ")
+    else:
+        print("[i] Proxy mode deactivated !")
+
+
 #-------------------------| MENU |-------------------------------------------------------------------------------------#
 
 def menu(categories=[Category], channels=[Channel]):
@@ -419,20 +515,22 @@ def menu(categories=[Category], channels=[Channel]):
             print('    1) Show Categories list.')
             print('    2) Show Channels into Categories.')
             print('    3) Search Categories by name.')
-            print('    4) Search Channels by name.\n')
-            print('    5) Show download list and download. ')
-            print('    6) Reload m3u file. \n')
+            print('    4) Search Channels by name.')
+            print('    5) Show download list and download.\n ')
+            print('    6) Reload m3u file.')
+            print('    7) On/Off Proxy Mode \n')
             print('    0) Exit.')
             print('---------------------------------------------[Dev by Alfix00]')
-            print('Loaded: ')
+            print('> Proxy Mode: '+str(status_proxy))
+            print('\nLoaded: ')
             print('\tChannels: ' + str(len(channels)))
             print('\tCategories: ' + str(len(categories)))
-            choice = int(input("\n\tScelta: "))
+            choice = int(input("\n\tChoice: "))
             clear()
             if choice == 0:
                 print("\n\n-> Exit from the program!\n")
                 exit = True
-            if choice < 1 or choice > 6 and choice != 0:
+            if choice < 1 or choice > 7 and choice != 0:
                 if choice != 0:
                     print('Error! back to menu... ')
             if choice == 1:
@@ -447,6 +545,8 @@ def menu(categories=[Category], channels=[Channel]):
                 option_five()
             if choice == 6:
                 reload_m3u()
+            if choice == 7:
+                proxy_mode()
             if exit is False:
                 input("\nPress Enter to continue...")
         except KeyboardInterrupt:
@@ -466,6 +566,7 @@ def checkFolder():
         except OSError:
             pass
 
+
 def checkSettings():
     path = './settings/'
     path_c = './settings/categories.npy'
@@ -474,6 +575,9 @@ def checkSettings():
         return True
     return False
 
+def on_off_proxies():
+    global status_proxy
+    status_proxy = not status_proxy
 
 
 def initialize():
@@ -495,8 +599,9 @@ def initialize():
             categories = numpy.load("./settings/categories.npy", allow_pickle=True)
         check_dwn_list()
         menu(categories, channels)
-    except Exception:
+    except Exception as e:
         print("\n\n> Exit from the program.\n")
+        print(e)
 
 
 initialize()
