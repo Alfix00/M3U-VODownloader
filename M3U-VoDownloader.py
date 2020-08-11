@@ -10,7 +10,7 @@ class Channel:
         self.category = category
         self.url = url
         self.format = str(url.split(".", 3)[-1])
-        if self.format is "":
+        if self.format == "":
             self.format = "mp4"                                 #default format
         self.size_download = "Not Calculated yet"
 
@@ -64,6 +64,10 @@ class Category:
         self.numberChannel = new_number
 
 #--------| Downloading and Loading channels |------------------------------------------------------------------#
+
+size_file_m3u = 0
+
+filledCategories = [Category]
 
 fresh_proxy = []
 
@@ -129,13 +133,17 @@ class LoadFile:
         return file_name
 
     def getChannels(self, channels):
+        global size_file_m3u
         file_name = LoadFile.check_m3u_file(self)
         if not file_name == "":
             f = open(file_name, "r")
             with open(file_name) as f:
                 string_pattern = []
+
                 for line in f:
                     string_pattern.append(line)
+                size_file_m3u = len(string_pattern)
+
                 for channel in string_pattern:
                     # this is the first pattern --> Extract channel name from channels.m3u line by line
                     channel_name = re.search('#EXTINF:-1 tvg-id="" tvg-name="(.+?)" tvg-logo=', channel)
@@ -153,12 +161,44 @@ class LoadFile:
                         c = Channel(channel_name, channel_category, channel_link)
                         channels.append(c)
                     # End Channel build
-                numpy.save("./settings/channels", channels, allow_pickle=True)
                 return channels
         elif file_name == "":
             print(".m3u file not found in folder or corrupt! \nYou need to have a single .m3u file in the folder!")
             input("\nPress any key to continue.")
             exit(0)
+
+    def getChannels_alternative(self, channels):
+        global size_file_m3u
+        file_name = LoadFile.check_m3u_file(self)
+        try:
+            if not file_name == "":
+                f = open(file_name, "r")
+                with open(file_name) as f:
+                    string_pattern = []
+
+                    for line in f:
+                        string_pattern.append(line)
+                    size_file_m3u = len(string_pattern)
+                    for channel in string_pattern:
+                        pattern = channel.split(",")
+                        channel_link = ''
+                        if  channel.find('http') != -1:
+                            # if the line doesn't contains the channel pattern, the 'line' point into a URL.
+                            channel_link = channel
+                        else:
+                            channel_name = str(pattern[1])
+                        channel_category = 'NaN'
+                        if channel_name != '' and channel_link != '': 
+                            c = Channel(channel_name, channel_category, channel_link)
+                            channels.append(c)
+                    # End Channel build
+                    return channels
+            elif file_name == "":
+                print(".m3u file not found in folder or corrupt! \nYou need to have a single .m3u file in the folder!")
+                input("\nPress any key to continue.")
+                exit(0)
+        except:
+            pass
 
     def getCategory(self, channels=[Channel]):
         categories = [Category]
@@ -179,6 +219,7 @@ class LoadFile:
         return categories
 
     def fill_categories(self, categories=[Category], channels=[Channel]):
+        global filledCategories
         filledCategories = [Category]
         for category in categories:
             temp = [Channel]
@@ -197,8 +238,8 @@ class LoadFile:
             new_cat.updateNumberChannel(len(new_cat.getChannels()) - 1)
             if int(len(new_cat.getChannels())) > 1:
                 filledCategories.append(new_cat)
-        numpy.save('./settings/categories', filledCategories, allow_pickle=True)
         return filledCategories
+
 
 
 #--------| Output for Category and Channels |------------------------------------------------------------------#
@@ -267,26 +308,77 @@ def show_download_list(channels=[Channel]):
 
 #--------| Menu Options |---------------------------------------------------------------------------------------------------#
 
+no_category_mode = False
+
 def option_one(categories=[Category]):
     answer = 0
     show_category_list(categories)
     answer = input("Show channels into a category? \n\n\t[1 = YES] - [other = NO]: ")
     if answer == '1':
-        option_two(categories)
+        option_four(categories)
 
 
-def option_two(categories=[Category]):
-    choice = int(input("\nWhich category do you wanna see? [1 - " + str(len(categories) - 1) + "] :" ))
+
+def option_two(channels=[Channel]):
+    key = str(input("Type the keyword to be searched among the channels: "))
+    filtred_channels = [Channel]
+    for channel in channels:
+        if isinstance(channel, Channel):
+            if str(key).lower() in str(channel.getName()).lower():
+                filtred_channels.append(channel)
+    show_channels(filtred_channels)
+    if len(filtred_channels) > 1:
+        add_to_list(filtred_channels)
+    elif len(filtred_channels) <= 1:
+        print("\n[!] Channel not found!")
+
+
+def option_three():
+    global donwloadlist
+    show_download_list(donwloadlist)
+    try:
+        answer = int(input("\nStart the download?\n\n\t [1 = YES] - [2] Clean DownloadList  [Other = NO]: "))
+        if answer == 1:
+            load_list = donwloadlist
+            lock = False
+            clear()
+            print("[**] Press CTRL + C for stop the download and back to menu' [**]\n ")
+            for channel in load_list:
+                if isinstance(channel, Channel) and lock is False:
+                    thread = downloadThread(channel)
+                    thread.start()
+                    thread.join()
+                    load_list.remove(channel)
+            donwloadlist = load_list
+        if answer == 2:
+            clean_list = [Channel]  
+            donwloadlist = clean_list
+            numpy.save("./settings/download list", donwloadlist)
+            donwloadlist = numpy.load("./settings/download list.npy", allow_pickle=True)
+            
+            print("\nDownload list successfully cleaned.")
+    except:
+        print("Error while downloading files, please check if the contents of m3u file are online")
+        input("\nPress any key to continue...")
+
+
+
+
+def option_four(categories=[Category]):
+    global no_category_mode
+    choice = int(input("\nWhich category do you wanna see? [1 - " + str(len(categories) ) + "] :" ))
     print('\n')
     length = int(len(categories))
-    if choice < 1 or choice > length:
-        print("Index < 0 or index > " + str(len(categories) - 1))
-    elif 1 <= choice < length:
+    if choice < 0 or choice > length:
+        print("Index < 0 or index > " + str(len(categories) ))
+    elif 0 <= choice < length and no_category_mode :
         show_channel_category(categories.__getitem__(choice))
         add_to_list(categories.__getitem__(choice).getChannels())
 
+    
 
-def option_three(categories=[Category]):
+
+def option_five(categories=[Category]):
     key = str(input("Type the keyword to be searched among the categories: ").upper())
     filtred_cat = [Category]
     for category in categories:
@@ -304,38 +396,6 @@ def option_three(categories=[Category]):
     elif len(filtred_cat) <= 1:
         print("\n[!] Category not found!")
 
-
-def option_four(channels=[Channel]):
-    key = str(input("Type the keyword to be searched among the channels: "))
-    filtred_channels = [Channel]
-    for channel in channels:
-        if isinstance(channel, Channel):
-            if str(key).lower() in str(channel.getName()).lower():
-                filtred_channels.append(channel)
-    show_channels(filtred_channels)
-    if len(filtred_channels) > 1:
-        add_to_list(filtred_channels)
-    elif len(filtred_channels) <= 1:
-        print("\n[!] Channel not found!")
-
-
-def option_five():
-    global donwloadlist
-    show_download_list(donwloadlist)
-    answer = int(input("\nStart the download?\n\n\t [1 = YES] - [Other = NO] : "))
-    if answer is 1:
-        load_list = donwloadlist
-        lock = False
-        clear()
-        print("[**] Press CTRL + C for stop the download and back to menu' [**]\n ")
-        for channel in load_list:
-            if isinstance(channel, Channel) and lock is False:
-                thread = downloadThread(channel)
-                thread.start()
-                thread.join()
-                load_list.remove(channel)
-        donwloadlist = load_list
-
 #--------| Functions |-------------------------------------------------------------------------------------------------#
 
 def clear():
@@ -346,12 +406,24 @@ def clear():
 
 
 def reload_m3u():
+    global no_category_mode
+    load = LoadFile()
+    category = None
     channels = [Channel]
-    channels = LoadFile().getChannels(channels)
-    categories = LoadFile().getCategory(channels)
-    print('Reloading M3U file, please wait...')
-    categories = LoadFile().fill_categories(categories, channels)
-    menu(categories,channels)
+    channels = load.getChannels(channels)
+    categories = load.getCategory(channels)
+    if check_size_multimedia(channels) == False:
+        channels = [Channel]
+        channels = load.getChannels_alternative(channels)
+        categories = [Category]
+        category = Category('Nan',channels)
+        category.setChannels(channels)
+        no_category_mode = False
+    else:
+        categories = load.fill_categories(categories, channels)
+        no_category_mode = True
+    save_settings(channels,categories,category)
+    menu(categories,channels,category)
 
 
 def reporthook(blocknum, blocksize, totalsize):  #I Use this method for the progress bar in urllib.request
@@ -439,52 +511,52 @@ def check_dwn_list():
 donwloadlist = [Channel]                        #This is the global array of channels in download list.
 
 def add_to_list(channels=[Channel]):
-    download_list = [Channel]
-    if int(len(channels)) == 0:
-        print('Error to load channels')
-    if int(len(channels)) > 0:
-        answer = int(input('[*] You want to add a channel(s) to the download list?\n\n\t [1 = YES] - [2 = NO] : '))
-        if answer == 1:
-            answer_two = int(input('\nYou want to make a multiple selection?\n\n\t [1 = YES] - [2 = NO] : '))
-            #------------------------------------| Multiple download section |--------------------------------------------#
-            if answer_two == 1:
-                answer_tree = int(input(
-                    '\n[*] Set a selection method.\n\n[1 = Add by index] - [2 = Add by range] : '))
-                #------------------------|Single selection of links (e.g. list >: 1, 3, 5, 6) |------------------------#
-                if answer_tree == 1:
-                    exit = False
-                    print('[i] Once finished adding the channels, type [0] to exit.')
+        download_list = [Channel]
+        if int(len(channels)) == 0:
+            print('Error to load channels')
+        if int(len(channels)) > 0:
+            answer = int(input('[*] You want to add a channel(s) to the download list?\n\n\t [1 = YES] - [2 = NO] : '))
+            if answer == 1:
+                answer_two = int(input('\nYou want to make a multiple selection?\n\n\t [1 = YES] - [2 = NO] : '))
+                #------------------------------------| Multiple download section |--------------------------------------------#
+                if answer_two == 1:
+                    answer_tree = int(input(
+                        '\n[*] Set a selection method.\n\n[1 = Add by index] - [2 = Add by range] : '))
+                    #------------------------|Single selection of links (e.g. list >: 1, 3, 5, 6) |------------------------#
+                    if answer_tree == 1:
+                        exit = False
+                        print('[i] Once finished adding the channels, type [0] to exit.')
+                        print('\nIndexes available [1 -' + str(len(channels) - 1) + "]. \n")
+                        while exit == False:
+                            channel = int(input('Add ID channel : '))
+                            if channel == 0:
+                                exit = True
+                            elif 0 < channel < len(channels):
+                                download_list.append(channels.__getitem__(channel))
+                        append_to_list(download_list)
+                    #----------------------------|Download by index range (e.g: 1 to 10) |---------------------------------#
+                    elif answer_tree == 2:
+                        print('\n[*] Indexes available [1 - ' + str(len(channels) - 1) + "]. ")
+                        first = int(input('\n\tSet first index ID: '))
+                        second = int(input('\tSet last index ID: '))
+                        if first < len(channels) and second < len(channels) and first < second and first > 0:
+                            while first <= second:
+                                download_list.append(channels.__getitem__(first))
+                                first += 1
+                            print('\nChannel added to list!\n')
+                        elif first >= len(channels) or second >= len(channels):
+                            print("Error, index(s) selected higher than the indexes available in the category.\n")
+                        append_to_list(download_list)
+                elif answer_two == 2:
+                    #----------------------------|Download single link by index|-------------------------------------------#
                     print('\nIndexes available [1 -' + str(len(channels) - 1) + "]. \n")
-                    while exit == False:
-                        channel = int(input('Add ID channel : '))
-                        if channel == 0:
-                            exit = True
-                        elif 0 < channel < len(channels):
-                            download_list.append(channels.__getitem__(channel))
-                    append_to_list(download_list)
-                #----------------------------|Download by index range (e.g: 1 to 10) |---------------------------------#
-                elif answer_tree == 2:
-                    print('\n[*] Indexes available [1 - ' + str(len(channels) - 1) + "]. ")
-                    first = int(input('\n\tSet first index ID: '))
-                    second = int(input('\tSet last index ID: '))
-                    if first < len(channels) and second < len(channels) and first < second and first > 0:
-                        while first <= second:
-                            download_list.append(channels.__getitem__(first))
-                            first += 1
-                        print('\nChannel added to list!\n')
-                    elif first >= len(channels) or second >= len(channels):
-                        print("Error, index(s) selected higher than the indexes available in the category.\n")
-                    append_to_list(download_list)
-            elif answer_two == 2:
-                #----------------------------|Download single link by index|-------------------------------------------#
-                print('\nIndexes available [1 -' + str(len(channels)) + "]. \n")
-                channel = int(input("Enter the ID of the channel you want to download: "))
-                if channel > 0 and channel < int(len(channels)):
-                    download_list.append(channels.__getitem__(channel))
-                    append_to_list(download_list)
-                print('Channel added succesfully! ')
-        if answer == 2:
-            print('Back to menu...')
+                    channel = int(input("Enter the ID of the channel you want to download: "))
+                    if channel > 0 and channel < int(len(channels)):
+                        download_list.append(channels.__getitem__(channel))
+                        append_to_list(download_list)
+                    print('Channel added succesfully! ')
+            if answer == 2:
+                print('Back to menu...')
 
 def proxy_mode():
     global fresh_proxy, status_proxy
@@ -504,7 +576,8 @@ def proxy_mode():
 
 #-------------------------| MENU |-------------------------------------------------------------------------------------#
 
-def menu(categories=[Category], channels=[Channel]):
+def menu(categories=[Category], channels=[Channel], category=Category):
+    global no_category_mode
     exit = False
     download_list = [Channel]
     while exit is False:
@@ -512,19 +585,21 @@ def menu(categories=[Category], channels=[Channel]):
             clear()
             print('GitHub: https://github.com/Alfix00')
             print('\n---------------| VODownloader |------------\n')
-            print('    1) Show Categories list.')
-            print('    2) Show Channels into Categories.')
-            print('    3) Search Categories by name.')
-            print('    4) Search Channels by name.')
-            print('    5) Show download list and download.\n ')
+            print('    1) Show Categories/Channel list.')
+            print('    2) Search Channels by name.')
+            print('    3) Show download list and download.\n ')
+            if no_category_mode:
+                print('    4) Show Channels into Categories.')
+                print('    5) Search Categories by name.')
             print('    6) Reload m3u file.')
-            print('    7) On/Off Proxy Mode \n')
+            #print('    7) On/Off Proxy Mode \n')                                           //Under maintenance
             print('    0) Exit.')
             print('---------------------------------------------[Dev by Alfix00]')
-            print('> Proxy Mode: '+str(status_proxy))
+            #print('> Proxy Mode: '+str(status_proxy))
             print('\nLoaded: ')
             print('\tChannels: ' + str(len(channels)))
-            print('\tCategories: ' + str(len(categories)))
+            if no_category_mode:
+                print('\tCategories: ' + str(len(categories)))
             choice = int(input("\n\tChoice: "))
             clear()
             if choice == 0:
@@ -533,17 +608,28 @@ def menu(categories=[Category], channels=[Channel]):
             if choice < 1 or choice > 7 and choice != 0:
                 if choice != 0:
                     print('Error! back to menu... ')
-            if choice == 1:
-                option_one(categories)
+            try:
+                if choice == 1:
+                    if no_category_mode == False:
+                        print("ok")
+                        channels = [Channel]
+                        channels = category.getChannels()
+                        show_channels(channels)
+                    else:
+                        option_one(categories)
+            except:
+                reload_m3u()
             if choice == 2:
-                option_two(categories)
+                option_two(channels)
             if choice == 3:
-                option_three(categories)
+                option_three()
             if choice == 4:
-                option_four(channels)
+                option_four(categories)
             if choice == 5:
-                option_five()
+                option_five(categories)
             if choice == 6:
+                clear()
+                input("Press any key to reload m3u/m3u8 file...")
                 reload_m3u()
             if choice == 7:
                 proxy_mode()
@@ -560,12 +646,6 @@ def checkFolder():
             os.mkdir("Download_folder")
         except OSError:
             pass
-    if not os.path.isfile("./settings"):
-        try:
-            os.mkdir("settings")
-        except OSError:
-            pass
-
 
 def checkSettings():
     path = './settings/'
@@ -579,26 +659,44 @@ def on_off_proxies():
     global status_proxy
     status_proxy = not status_proxy
 
+def save_settings(channels,categories,category):
+    global size_file_m3u, no_category_mode
+    if len(channels) > size_file_m3u / 3:           #If the channels are less than the real size, the script will not save any settings.
+        if not os.path.isfile("./settings"):
+            try:
+                os.mkdir("settings")
+            except OSError:
+                pass
+        numpy.save("./settings/channels", channels, allow_pickle=True)
+        numpy.save('./settings/category', category, allow_pickle=True)
+        numpy.save('./settings/categories', filledCategories, allow_pickle=True)
+
+def check_size_multimedia(channels):
+    global size_file_m3u
+    if (len(channels) * 2) > size_file_m3u - 1:
+        return True
+    else:
+        return False
+
 
 def initialize():
     # START
+    global no_category_mode
     clear()
     try:
+        print('Loading file, please wait...')
         checkFolder()
         settings = False
         settings = checkSettings()
+        category = None
+        check_dwn_list()
         if settings is False:
-            channels = [Channel]
-            channels = LoadFile().getChannels(channels)
-            categories = LoadFile().getCategory(channels)
-            print('Loading file, please wait...')
-            categories = LoadFile().fill_categories(categories, channels)
-            print('\nLoaded Succesfully!\n')
+            reload_m3u()
         else:   #This will save loading time!
             channels = numpy.load("./settings/channels.npy", allow_pickle=True)
             categories = numpy.load("./settings/categories.npy", allow_pickle=True)
-        check_dwn_list()
-        menu(categories, channels)
+            category = numpy.load("./settings/category.npy", allow_pickle=True)
+            menu(categories, channels, category)
     except Exception as e:
         print("\n\n> Exit from the program.\n")
         print(e)
