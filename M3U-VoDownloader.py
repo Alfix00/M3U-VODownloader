@@ -1,4 +1,4 @@
-import re, sys, os.path, urllib.request, time, threading, collections, numpy, asyncio, random
+import re, sys, os.path, urllib.request, time, threading, collections, numpy, asyncio, random, socket, fcntl, struct
 from threading import Thread
 from os import system, name
 from urllib.request import urlretrieve
@@ -109,16 +109,17 @@ class downloadThread (Thread):
                     threadLock.release()
                     print("\nDownload completed!\n\n")
 
-            except:
+            except InterruptedError or KeyboardInterrupt:
                 threadLock.release()
-                if InterruptedError or KeyboardInterrupt:
-                    print("\n\n[!] Download Stopped \n")
-                    os.remove("./Download_folder/" + str(self.channel.getName() + "." + self.channel.getFormat()[:-1]))
-                    lock = True
-                else:
-                    print("\n[!] Error while downloading " + self.channel.getName() + " [!]\n")
-                    os.remove("./Download_folder/" + str(self.channel.getName() + "." + self.channel.getFormat()[:-1]))
-                    input("\n* Press any key to download next channel *")
+                print("\n\n[!] Download Stopped \n")
+                try: os.remove("./Download_folder/" + str(self.channel.getName() + "." + self.channel.getFormat()[:-1]))
+                except: pass
+                lock = True
+            except:
+                print("\n[!] Error while downloading " + self.channel.getName() + " [!]\n")
+                try: os.remove("./Download_folder/" + str(self.channel.getName() + "." + self.channel.getFormat()[:-1]))
+                except: pass
+                input("\n* Press any key to download next channel *")
 
 
 class LoadFile:
@@ -188,7 +189,7 @@ class LoadFile:
                         else:
                             channel_name = str(pattern[1])
                         channel_category = 'NaN'
-                        if channel_name != '' and channel_link != '': 
+                        if channel_name != '' and channel_link != '':
                             c = Channel(channel_name, channel_category, channel_link)
                             channels.append(c)
                     # End Channel build
@@ -336,30 +337,31 @@ def option_two(channels=[Channel]):
 def option_three():
     global donwloadlist
     show_download_list(donwloadlist)
-    try:
-        answer = int(input("\nStart the download?\n\n\t [1 = YES] - [2] Clean DownloadList  [Other = NO]: "))
-        if answer == 1:
-            load_list = donwloadlist
-            lock = False
-            clear()
-            print("[**] Press CTRL + C for stop the download and back to menu' [**]\n ")
-            for channel in load_list:
-                if isinstance(channel, Channel) and lock is False:
-                    thread = downloadThread(channel)
-                    thread.start()
-                    thread.join()
-                    load_list.remove(channel)
-            donwloadlist = load_list
-        if answer == 2:
-            clean_list = [Channel]  
-            donwloadlist = clean_list
-            numpy.save("./settings/download list", donwloadlist)
-            donwloadlist = numpy.load("./settings/download list.npy", allow_pickle=True)
-            
-            print("\nDownload list successfully cleaned.")
-    except:
-        print("Error while downloading files, please check if the contents of m3u file are online")
-        input("\nPress any key to continue...")
+    if len(donwloadlist) > 0:
+        try:
+            answer = int(input("\nStart the download?\n\n\t [1 = YES] - [2] Clean DownloadList  [Other = NO]: "))
+            if answer == 1:
+                load_list = donwloadlist
+                lock = False
+                clear()
+                print("[**] Press CTRL + C for stop the download and back to menu' [**]\n ")
+                for channel in load_list:
+                    if isinstance(channel, Channel) and lock is False:
+                        thread = downloadThread(channel)
+                        thread.start()
+                        thread.join()
+                        load_list.remove(channel)
+                donwloadlist = load_list
+            if answer == 2:
+                clean_list = [Channel]
+                donwloadlist = clean_list
+                numpy.save("./settings/download list", donwloadlist)
+                donwloadlist = numpy.load("./settings/download list.npy", allow_pickle=True)
+
+                print("\nDownload list successfully cleaned.")
+        except:
+            print("Error while downloading files, please check if the contents of m3u file are online")
+            input("\nPress any key to continue...")
 
 
 
@@ -375,7 +377,7 @@ def option_four(categories=[Category]):
         show_channel_category(categories.__getitem__(choice))
         add_to_list(categories.__getitem__(choice).getChannels())
 
-    
+
 
 
 def option_five(categories=[Category]):
@@ -412,7 +414,7 @@ def reload_m3u():
     channels = [Channel]
     channels = load.getChannels(channels)
     categories = load.getCategory(channels)
-    if check_size_multimedia(channels) == False:
+    if check_size_multimedia(channels):
         channels = [Channel]
         channels = load.getChannels_alternative(channels)
         categories = [Category]
@@ -423,10 +425,9 @@ def reload_m3u():
         categories = load.fill_categories(categories, channels)
         no_category_mode = True
     save_settings(channels,categories,category)
-    menu(categories,channels,category)
 
 
-def reporthook(blocknum, blocksize, totalsize):  #I Use this method for the progress bar in urllib.request
+def reporthook(blocknum, blocksize, totalsize):  # I Use this method for the progress bar in urllib.request
     global start_time
     readsofar = blocknum * blocksize
     if blocknum == 0:
@@ -434,16 +435,19 @@ def reporthook(blocknum, blocksize, totalsize):  #I Use this method for the prog
         return
     if totalsize > 0:
         duration = time.time() - start_time
+        hours, minutes = divmod(duration, 60)
+        hours = divmod(minutes, 60)
         progress_size = int(blocknum * blocksize)
         speed = int(progress_size / (1024 * duration))
         percent = readsofar * 1e2 / totalsize
-        s = "\r%5.1f%% %*d MB / %d MB --- %d KB/s --- %d seconds passed" % (percent, len(str(totalsize)), readsofar*1e-6, totalsize*1e-6, speed, duration)
+        s = "\r%5.1f%% %*d MB / %d MB --- %d KB/s --- " % (
+        percent, len(str(totalsize)), readsofar * 1e-6, totalsize * 1e-6, speed) + \
+            f'{hours:d}:{minutes:02d}:{duration:02d}' + " seconds passed"
         sys.stderr.write(s)
-        if readsofar >= totalsize:                # near the end
+        if readsofar >= totalsize:  # near the end
             sys.stderr.write("\n")
-    else:                                         # total size is unknown
+    else:  # total size is unknown
         sys.stderr.write("read %d\n" % (readsofar,))
-
 
 def load_p():
     proxies = numpy.load("./settings/proxies.npy", allow_pickle=True)
@@ -584,6 +588,7 @@ def menu(categories=[Category], channels=[Channel], category=Category):
         try:
             clear()
             print('GitHub: https://github.com/Alfix00')
+            #print('\n\n\n\nYour IP: ' + str(get_ip_address('eth0')))
             print('\n---------------| VODownloader |------------\n')
             print('    1) Show Categories/Channel list.')
             print('    2) Search Channels by name.')
@@ -611,7 +616,6 @@ def menu(categories=[Category], channels=[Channel], category=Category):
             try:
                 if choice == 1:
                     if no_category_mode == False:
-                        print("ok")
                         channels = [Channel]
                         channels = category.getChannels()
                         show_channels(channels)
@@ -619,6 +623,7 @@ def menu(categories=[Category], channels=[Channel], category=Category):
                         option_one(categories)
             except:
                 reload_m3u()
+                option_one(categories)
             if choice == 2:
                 option_two(channels)
             if choice == 3:
@@ -696,7 +701,7 @@ def initialize():
             channels = numpy.load("./settings/channels.npy", allow_pickle=True)
             categories = numpy.load("./settings/categories.npy", allow_pickle=True)
             category = numpy.load("./settings/category.npy", allow_pickle=True)
-            menu(categories, channels, category)
+        menu(categories, channels, category)
     except Exception as e:
         print("\n\n> Exit from the program.\n")
         print(e)
