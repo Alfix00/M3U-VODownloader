@@ -1,4 +1,4 @@
-[**] Check the new M3U-VodDownloader written in java: https://github.com/Alfix00/M3U-VodDownloader-JE [***]
+[**] Check the new M3U-VodDownloader written in java: https://iir.ai/w7Bc [***]
 
 # M3U-VODownloader
 Video on Demand or VOD, are huge database of videos/film/media stored into a file ( .m3u or .m3u8 ), you can open it with VLC and see all the contents.
