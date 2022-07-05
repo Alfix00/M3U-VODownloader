@@ -17,7 +17,7 @@ maxminddb==1.5.2
 multidict==4.7.5
 numpy==1.18.1
 proxybroker==0.3.2
-pycares==3.1.1
+pycares==4.2.0
 pycparser==2.20
 pycrypto==2.6.1
 #pycurl==7.43.0.2
