@@ -6,7 +6,7 @@ asyncio==3.4.3
 attrs==19.1.0
 cffi==1.14.0
 chardet==3.0.4
-cryptography==2.8
+cryptography==39.0.1
 dbus-python==1.2.16
 entrypoints==0.3
 idna==2.9
